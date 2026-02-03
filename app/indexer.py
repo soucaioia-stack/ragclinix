@@ -25,27 +25,29 @@ def fetch_md(url: str) -> str:
 def parse_frontmatter(content: str) -> tuple[dict, str]:
     match = re.match(r"^---\s*\n(.*?)\n---\s*\n(.*)", content, re.DOTALL)
     if match:
-        return yaml.safe_load(match.group(1)) or {}, match.group(2)
+        metadata = yaml.safe_load(match.group(1)) or {}
+        body = match.group(2)
+        return metadata, body
     return {}, content
 
 
 def chunk_by_sections(body: str, metadata: dict, source_url: str) -> list[dict]:
     parts = re.split(r"^(##\s+.+)$", body, flags=re.MULTILINE)
-    chunks = []
 
+    chunks = []
     i = 1
     while i < len(parts) - 1:
         header = parts[i].strip()
         content = parts[i + 1].strip()
         if content:
-            section = header.replace("## ", "")
+            section_name = header.replace("## ", "")
             chunks.append(
                 {
                     "text": f"{header}\n{content}",
                     "metadata": {
                         "tipo": metadata.get("tipo", "unknown"),
                         "nome": metadata.get("nome", "unknown"),
-                        "section": section,
+                        "section": section_name,
                         "source_url": source_url,
                     },
                 }
@@ -62,21 +64,19 @@ def generate_point_id(source_url: str, section: str) -> str:
 
 
 def ensure_collection():
-    if qdrant.collection_exists(settings.QDRANT_COLLECTION):
-        return
-
-    qdrant.create_collection(
-        collection_name=settings.QDRANT_COLLECTION,
-        vectors_config={
-            "vectorix": VectorParams(
-                size=1536,
-                distance=Distance.COSINE,
-            ),
-        },
-        sparse_vectors_config={
-            "vectorixsparse": SparseVectorParams(),
-        },
-    )
+    if not qdrant.collection_exists(settings.COLLECTION_NAME):
+        qdrant.create_collection(
+            collection_name=settings.COLLECTION_NAME,
+            vectors_config={
+                "dense": VectorParams(
+                    size=1536,
+                    distance=Distance.COSINE,
+                )
+            },
+            sparse_vectors_config={
+                "sparse": SparseVectorParams(),
+            },
+        )
 
 
 def index_document(url: str) -> dict:
@@ -89,27 +89,29 @@ def index_document(url: str) -> dict:
 
     ensure_collection()
 
-    texts = [c["text"] for c in chunks]
+    texts = [chunk["text"] for chunk in chunks]
 
-    # Dense embeddings (OpenAI)
+    # Dense (OpenAI)
     dense_response = openai.embeddings.create(
         model=settings.DENSE_MODEL,
         input=texts,
     )
     dense_vectors = [item.embedding for item in dense_response.data]
 
-    # Sparse embeddings (BM42)
+    # Sparse (BM25)
     sparse_model = get_sparse_model()
-    sparse_embeddings = list(sparse_model.embed_documents(texts))
+    sparse_embeddings = list(sparse_model.embed(texts))
 
     points = []
     for i, chunk in enumerate(chunks):
+        point_id = generate_point_id(url, chunk["metadata"]["section"])
+
         points.append(
             PointStruct(
-                id=generate_point_id(url, chunk["metadata"]["section"]),
+                id=point_id,
                 vector={
-                    "vectorix": dense_vectors[i],
-                    "vectorixsparse": SparseVector(
+                    "dense": dense_vectors[i],
+                    "sparse": SparseVector(
                         indices=sparse_embeddings[i].indices.tolist(),
                         values=sparse_embeddings[i].values.tolist(),
                     ),
@@ -122,12 +124,12 @@ def index_document(url: str) -> dict:
         )
 
     qdrant.upsert(
-        collection_name=settings.QDRANT_COLLECTION,
+        collection_name=settings.COLLECTION_NAME,
         points=points,
     )
 
     return {
         "status": "ok",
         "chunks_indexados": len(points),
-        "collection": settings.QDRANT_COLLECTION,
+        "source": url,
     }
