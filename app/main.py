@@ -49,26 +49,29 @@ def query(
 ):
     """
     Endpoint principal — chamado pelo n8n / WhatsApp.
-
-    Fluxo:
-      1. Valida token
-      2. Busca histórico recente no Redis
-      3. Busca híbrida no Qdrant
-      4. Gera resposta com LLM
-      5. Salva histórico
     """
     _check_query_token(authorization)
 
     try:
         history = get_recent_history(request.contact_id)
         chunks = search(request.question)
-        answer = generate_response(
+
+        result = generate_response(
             request.question,
             chunks,
             history,
         )
-        append_messages(request.contact_id, request.question, answer)
-        return {"response": answer}
+
+        append_messages(
+            request.contact_id,
+            request.question,
+            result["answer"],
+        )
+
+        return {
+            "response": result["answer"],
+            "usage": result["usage"],
+        }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
