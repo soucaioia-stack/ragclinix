@@ -1,6 +1,10 @@
 from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 
+from app.prompts import SYSTEM_PROMPT
+print("PROMPT CARREGADO:", SYSTEM_PROMPT[:50])
+
+
 from app.config import settings
 from app.history import (
     append_messages,
