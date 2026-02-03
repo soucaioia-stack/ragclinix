@@ -1,29 +1,31 @@
+from functools import lru_cache
+
 from openai import OpenAI
 from qdrant_client import QdrantClient
-import redis
+from fastembed import TextEmbedding, SparseTextEmbedding
 
 from app.config import settings
 
-# Clientes globais (uma instância só, reutilizada)
+
+# OpenAI client
 openai = OpenAI(api_key=settings.OPENAI_API_KEY)
 
+
+# Qdrant client
 qdrant = QdrantClient(
     url=settings.QDRANT_URL,
     api_key=settings.QDRANT_API_KEY,
+    check_compatibility=False,  # remove warnings inúteis
 )
 
-redis_client = redis.Redis.from_url(settings.REDIS_URL, decode_responses=True)
 
-
-# Modelo sparse com lazy init
-# Baixa o modelo BM42 na primeira chamada e caches afterwards
-_sparse_model = None
-
-
+# Sparse model (BM42)
+@lru_cache
 def get_sparse_model():
-    global _sparse_model
-    if _sparse_model is None:
-        from fastembed import SparseTextEmbedding
+    return SparseTextEmbedding("Qdrant/bm42-all-minilm-l6-v2")
 
-        _sparse_model = SparseTextEmbedding(model_name="Qdrant/bm42-all-MiniLM-L6-v2-onnx")
-    return _sparse_model
+
+# Dense model (FastEmbed só p/ busca, OpenAI p/ index)
+@lru_cache
+def get_dense_model():
+    return TextEmbedding("BAAI/bge-small-en-v1.5")
