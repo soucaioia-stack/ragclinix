@@ -18,6 +18,7 @@ class Settings(BaseSettings):
 
     # Segurança
     INDEX_TOKEN: str
+    QUERY_TOKEN: str   # 👈 novo (separa index de query)
 
     class Config:
         env_file = ".env"
