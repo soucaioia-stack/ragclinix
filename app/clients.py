@@ -1,24 +1,27 @@
-from qdrant_client import QdrantClient
 from openai import OpenAI
-from redis import Redis
+from qdrant_client import QdrantClient
 from fastembed import SparseTextEmbedding
-
+import redis
 from app.config import settings
 
+# ── OpenAI ─────────────────────────────────────
 openai = OpenAI(api_key=settings.OPENAI_API_KEY)
 
+# ── Qdrant ─────────────────────────────────────
 qdrant = QdrantClient(
     url=settings.QDRANT_URL,
     api_key=settings.QDRANT_API_KEY,
-    timeout=30,
 )
 
-redis_client = Redis.from_url(
+# ── Redis ──────────────────────────────────────
+redis_client = redis.from_url(
     settings.REDIS_URL,
     decode_responses=True,
 )
 
+# ── Sparse model (BM25-like) ───────────────────
 _sparse_model = None
+
 
 def get_sparse_model():
     global _sparse_model
