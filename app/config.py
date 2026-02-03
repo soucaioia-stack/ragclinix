@@ -4,13 +4,13 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     # OpenAI
     OPENAI_API_KEY: str
+    LLM_MODEL: str = "gpt-4.1-mini"
     DENSE_MODEL: str = "text-embedding-3-small"
-    LLM_MODEL: str = "gpt-4o-mini"
 
     # Qdrant
     QDRANT_URL: str
-    QDRANT_API_KEY: str
-    QDRANT_COLLECTION: str = "fonte-geral"
+    QDRANT_API_KEY: str | None = None
+    COLLECTION_NAME: str  # <-- ESSENCIAL
 
     # Redis
     REDIS_URL: str
@@ -20,6 +20,7 @@ class Settings(BaseSettings):
 
     class Config:
         env_file = ".env"
+        extra = "ignore"
 
 
 settings = Settings()
