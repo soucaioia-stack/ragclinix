@@ -1,46 +1,27 @@
-from functools import lru_cache
-import redis
-
-from openai import OpenAI
 from qdrant_client import QdrantClient
-from fastembed import TextEmbedding, SparseTextEmbedding
+from openai import OpenAI
+from redis import Redis
+from fastembed import SparseTextEmbedding
 
 from app.config import settings
 
-
-# ─────────────────────────────────────────
-# OpenAI
-# ─────────────────────────────────────────
 openai = OpenAI(api_key=settings.OPENAI_API_KEY)
 
-
-# ─────────────────────────────────────────
-# Qdrant
-# ─────────────────────────────────────────
 qdrant = QdrantClient(
     url=settings.QDRANT_URL,
     api_key=settings.QDRANT_API_KEY,
-    check_compatibility=False,
+    timeout=30,
 )
 
-
-# ─────────────────────────────────────────
-# Redis (USANDO O n8n-redis)
-# ─────────────────────────────────────────
-redis_client = redis.Redis.from_url(
+redis_client = Redis.from_url(
     settings.REDIS_URL,
     decode_responses=True,
 )
 
+_sparse_model = None
 
-# ─────────────────────────────────────────
-# Embeddings
-# ─────────────────────────────────────────
-@lru_cache
 def get_sparse_model():
-    return SparseTextEmbedding("Qdrant/bm25")
-
-
-@lru_cache
-def get_dense_model():
-    return TextEmbedding("BAAI/bge-small-en-v1.5")
+    global _sparse_model
+    if _sparse_model is None:
+        _sparse_model = SparseTextEmbedding("bm25")
+    return _sparse_model
