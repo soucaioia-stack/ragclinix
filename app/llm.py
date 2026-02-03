@@ -3,13 +3,22 @@ from app.config import settings
 from app.prompts import SYSTEM_PROMPT
 
 
-def generate_response(question: str, chunks: list[str], history: list[dict]) -> str:
+def generate_response(question: str, chunks: list[str], history: list[dict]) -> dict:
     """
-    Monta o prompt e chama o GPT.
-    - system: instruções + chunks recuperados do Qdrant
-    - history: últimas mensagens da conversa (contexto)
-    - user: pergunta atual
+    Monta o prompt e chama o LLM.
+
+    Retorna:
+      {
+        "answer": str,
+        "usage": {
+            "prompt_tokens": int,
+            "completion_tokens": int,
+            "total_tokens": int,
+            "model": str
+        }
+      }
     """
+
     chunks_text = (
         "\n\n---\n\n".join(chunks)
         if chunks
@@ -29,4 +38,15 @@ def generate_response(question: str, chunks: list[str], history: list[dict]) -> 
         max_tokens=512,
     )
 
-    return response.choices[0].message.content
+    answer = response.choices[0].message.content
+    usage = response.usage
+
+    return {
+        "answer": answer,
+        "usage": {
+            "prompt_tokens": usage.prompt_tokens,
+            "completion_tokens": usage.completion_tokens,
+            "total_tokens": usage.total_tokens,
+            "model": settings.LLM_MODEL,
+        },
+    }
