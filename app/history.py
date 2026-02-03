@@ -26,7 +26,11 @@ def append_messages(contact_id: str, user_msg: str, assistant_msg: str):
     history = get_history(contact_id)
     history.append({"role": "user", "content": user_msg})
     history.append({"role": "assistant", "content": assistant_msg})
-    redis_client.set(_key(contact_id), json.dumps(history, ensure_ascii=False))
+    redis_client.set(
+    _key(contact_id),
+    json.dumps(history, ensure_ascii=False),
+    ex=60 * 60 * 24
+)
 
 
 def clear_history(contact_id: str):
