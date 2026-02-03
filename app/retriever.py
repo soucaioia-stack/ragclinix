@@ -1,4 +1,5 @@
 from qdrant_client import QdrantClient
+from qdrant_client.models import NamedVector
 from fastembed import TextEmbedding
 import os
 
@@ -20,22 +21,25 @@ embedder = TextEmbedding("BAAI/bge-small-en-v1.5")
 
 def search(query: str, limit: int = 5) -> list[str]:
     """
-    Busca vetorial simples (dense).
-    Retorna lista de chunks (textos).
+    Busca vetorial densa simples (Qdrant >=1.16).
+    Retorna lista de textos (chunks).
     """
 
     # embedding → list[float]
     vector = list(embedder.embed(query))[0].tolist()
 
-    hits = client.search(
+    results = client.search_points(
         collection_name=COLLECTION_NAME,
-        query_vector=("vectorix", vector),  # 🔴 nome do vector no Qdrant
+        vector=NamedVector(
+            name="vectorix",   # 🔴 TEM QUE BATER COM O QDRANT
+            vector=vector,
+        ),
         limit=limit,
     )
 
     chunks = []
-    for hit in hits:
-        if hit.payload and "text" in hit.payload:
-            chunks.append(hit.payload["text"])
+    for point in results.points:
+        if point.payload and "text" in point.payload:
+            chunks.append(point.payload["text"])
 
     return chunks
