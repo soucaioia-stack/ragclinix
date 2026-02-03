@@ -38,7 +38,7 @@ redis_client = redis.Redis.from_url(
 # ─────────────────────────────────────────
 @lru_cache
 def get_sparse_model():
-    return SparseTextEmbedding("Qdrant/bm42-all-minilm-l6-v2")
+    return SparseTextEmbedding("Qdrant/bm25")
 
 
 @lru_cache
