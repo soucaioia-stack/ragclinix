@@ -23,5 +23,5 @@ _sparse_model = None
 def get_sparse_model():
     global _sparse_model
     if _sparse_model is None:
-        _sparse_model = SparseTextEmbedding("bm25")
+        _sparse_model = SparseTextEmbedding("Qdrant/bm25")
     return _sparse_model
