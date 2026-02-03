@@ -1,46 +1,53 @@
-from qdrant_client.models import Fusion, PrefetchQuery, SparseVector
+from qdrant_client import QdrantClient
+from qdrant_client.models import (
+    Filter,
+    SparseVector,
+    NamedVector,
+    Fusion,
+)
+from fastembed import TextEmbedding
+import os
 
-from app.clients import get_sparse_model, openai, qdrant
-from app.config import settings
+QDRANT_URL = os.getenv("QDRANT_URL")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+COLLECTION_NAME = os.getenv("QDRANT_COLLECTION", "documents")
+
+client = QdrantClient(
+    url=QDRANT_URL,
+    api_key=QDRANT_API_KEY,
+)
+
+embedder = TextEmbedding("BAAI/bge-small-en-v1.5")
 
 
-def search(query: str, top_k: int = None) -> list[str]:
-    """
-    Busca híbrida no Qdrant.
-    Combina dense (semântico) + sparse (keyword) com Reciprocal Rank Fusion.
-    Retorna os textos dos chunks mais relevantes.
-    """
-    if top_k is None:
-        top_k = settings.TOP_K
+def search(query: str, limit: int = 5):
+    dense_vector = list(embedder.embed(query))[0]
 
-    # Se a collection não existe ainda (antes de indexar), retorna vazio
-    if not qdrant.collection_exists(settings.COLLECTION_NAME):
-        return []
-
-    # 1. Dense embedding da pergunta (OpenAI)
-    dense_response = openai.embeddings.create(model=settings.DENSE_MODEL, input=[query])
-    dense_vector = dense_response.data[0].embedding
-
-    # 2. Sparse embedding da pergunta (BM42)
-    sparse_model = get_sparse_model()
-    sparse_embedding = list(sparse_model.embed_documents([query]))[0]
-    sparse_vector = SparseVector(
-        indices=sparse_embedding.indices.tolist(),
-        values=sparse_embedding.values.tolist(),
-    )
-
-    # 3. Hybrid search com RRF
-    #    prefetch busca os top N de cada tipo separadamente
-    #    query=Fusion.RRF combina os resultados com Reciprocal Rank Fusion
-    results = qdrant.query_points(
-        collection_name=settings.COLLECTION_NAME,
+    results = client.search(
+        collection_name=COLLECTION_NAME,
         prefetch=[
-            PrefetchQuery(query=dense_vector, using="dense", limit=top_k * 2),
-            PrefetchQuery(query=sparse_vector, using="sparse", limit=top_k * 2),
+            {
+                "query": dense_vector,
+                "using": "dense",
+                "limit": limit,
+            },
+            {
+                "query": SparseVector(
+                    indices=[],
+                    values=[],
+                ),
+                "using": "sparse",
+                "limit": limit,
+            },
         ],
-        query=Fusion.RRF,
-        limit=top_k,
-        with_payload=True,
+        fusion=Fusion.RRF,
+        limit=limit,
     )
 
-    return [point.payload["text"] for point in results.points]
+    return [
+        {
+            "score": r.score,
+            "payload": r.payload,
+        }
+        for r in results
+    ]
