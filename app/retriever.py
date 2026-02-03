@@ -1,57 +1,41 @@
 from qdrant_client import QdrantClient
-from qdrant_client.models import (
-    Prefetch,
-    SparseVector,
-    NamedVector,
-    Fusion,
-)
 from fastembed import TextEmbedding
 import os
 
+# ─── ENV ─────────────────────────────────────────────────────────────────────
 QDRANT_URL = os.getenv("QDRANT_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 COLLECTION_NAME = os.getenv("QDRANT_COLLECTION", "fonte-geral")
 
+# ─── CLIENT ──────────────────────────────────────────────────────────────────
 client = QdrantClient(
     url=QDRANT_URL,
     api_key=QDRANT_API_KEY,
     check_compatibility=False,
 )
 
+# ─── EMBEDDER ────────────────────────────────────────────────────────────────
 embedder = TextEmbedding("BAAI/bge-small-en-v1.5")
 
 
 def search(query: str, limit: int = 5) -> list[str]:
-    # Dense embedding → LIST[float]
-    dense_vector = list(embedder.embed(query))[0].tolist()
+    """
+    Busca vetorial simples (dense).
+    Retorna lista de chunks (textos).
+    """
 
-    sparse_vector = SparseVector(indices=[], values=[])
+    # embedding → list[float]
+    vector = list(embedder.embed(query))[0].tolist()
 
-    result = client.query_points(
+    hits = client.search(
         collection_name=COLLECTION_NAME,
-        prefetch=[
-            Prefetch(
-                query=NamedVector(
-                    name="vectorix",          # 🔴 TEM QUE BATER COM O QDRANT
-                    vector=dense_vector,
-                ),
-                limit=limit,
-            ),
-            Prefetch(
-                query=NamedVector(
-                    name="vectorixsparse",   # 🔴 TEM QUE BATER COM O QDRANT
-                    vector=sparse_vector,
-                ),
-                limit=limit,
-            ),
-        ],
-        fusion=Fusion.RRF,
+        query_vector=("vectorix", vector),  # 🔴 nome do vector no Qdrant
         limit=limit,
     )
 
     chunks = []
-    for point in result.points:
-        if point.payload and "text" in point.payload:
-            chunks.append(point.payload["text"])
+    for hit in hits:
+        if hit.payload and "text" in hit.payload:
+            chunks.append(hit.payload["text"])
 
     return chunks
