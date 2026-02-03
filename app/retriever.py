@@ -1,40 +1,37 @@
-from qdrant_client import QdrantClient
-from fastembed import TextEmbedding
-import os
-
-# ─── ENV ─────────────────────────────────────────────────────────────────────
-QDRANT_URL = os.getenv("QDRANT_URL")
-QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
-COLLECTION_NAME = os.getenv("QDRANT_COLLECTION", "fonte-geral")
-
-# ─── CLIENT ──────────────────────────────────────────────────────────────────
-client = QdrantClient(
-    url=QDRANT_URL,
-    api_key=QDRANT_API_KEY,
-    check_compatibility=False,
-)
-
-# ─── EMBEDDER ────────────────────────────────────────────────────────────────
-embedder = TextEmbedding("BAAI/bge-small-en-v1.5")
+from qdrant_client.models import SparseVector, Fusion
+from app.clients import qdrant, get_sparse_model, openai
+from app.config import settings
 
 
 def search(query: str, limit: int = 5) -> list[str]:
-    """
-    Busca vetorial densa usando query_points (API compatível).
-    """
+    dense = openai.embeddings.create(
+        model=settings.DENSE_MODEL,
+        input=query,
+    ).data[0].embedding
 
-    vector = list(embedder.embed(query))[0].tolist()
+    sparse_model = get_sparse_model()
+    sparse = list(sparse_model.embed(query))[0]
 
-    result = client.query_points(
-        collection_name=COLLECTION_NAME,
-        query=vector,              # 🔴 APENAS O VECTOR
+    results = qdrant.query_points(
+        collection_name=settings.QDRANT_COLLECTION,
+        prefetch=[
+            {
+                "query": dense,
+                "using": "vectorix",
+                "limit": limit,
+            },
+            {
+                "query": SparseVector(
+                    indices=sparse.indices.tolist(),
+                    values=sparse.values.tolist(),
+                ),
+                "using": "vectorixsparse",
+                "limit": limit,
+            },
+        ],
+        fusion=Fusion.RRF,
         limit=limit,
         with_payload=True,
-    )
+    ).points
 
-    chunks = []
-    for point in result.points:
-        if point.payload and "text" in point.payload:
-            chunks.append(point.payload["text"])
-
-    return chunks
+    return [r.payload["text"] for r in results]
